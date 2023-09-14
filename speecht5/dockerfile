@@ -1,0 +1,153 @@
+# ==================================================================
+# module list
+# ------------------------------------------------------------------
+# Ubuntu           20.04
+# CUDA             11.1
+# CuDNN            8-dev
+# cmake            3.16.3       (apt)
+# MKL              2020.4-912   (apt)
+# FFTW             latest       (apt)
+# KenLM            0c4dd4e      (git)
+# python3          latest       (apt)
+# ==================================================================
+FROM nvcr.io/nvidia/cuda:11.6.0-devel-ubuntu20.04
+LABEL maintainer="tdtu98 <tdtu98@gmail.com>"
+
+SHELL ["/bin/bash", "-c"]
+
+# If the driver is not found (during docker build) the cuda driver api need to be linked against the
+# libcuda.so stub located in the lib[64]/stubs directory
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/lib/libcuda.so.1
+
+ENV TZ=Asia/Tokyo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+ENV APT_INSTALL="apt-get install -y --no-install-recommends"
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBCONF_NOWARNINGS=yes
+ENV TORCH_CUDA_ARCH_LIST="3.7;5.0;6.0;7.0;7.5;8.0"
+ARG PYTHON_VERSION=3.9
+
+RUN rm -rf /var/lib/apt/lists/* \
+    /etc/apt/sources.list.d/cuda.list \
+    /etc/apt/sources.list.d/nvidia-ml.list && \
+    apt-get update && DEBIAN_FRONTEND=noninteractive $APT_INSTALL \
+    build-essential \
+    ca-certificates \
+    wget \
+    curl \
+    git \
+    g++ \
+    make \
+    cmake \
+    autoconf automake \
+    graphviz \
+    subversion \
+    libatlas3-base libtool \
+    pkg-config \
+    libgoogle-perftools-dev \
+    zip unzip \
+    gfortran \
+    # zsh
+    zsh \
+    # sndfile
+    libsndfile1-dev \
+    # ffmpeg
+    ffmpeg \
+    # for matplotlib
+    libfreetype6-dev \
+    # for MKL
+    apt-transport-https gpg-agent gnupg2 \
+    # for kenlm
+    libboost-thread-dev libboost-test-dev libboost-system-dev libboost-program-options-dev \
+    # FFTW
+    libfftw3-dev \
+    # ssh for OpenMPI
+    openssh-server openssh-client \
+    # for OpenMPI
+    libopenmpi-dev openmpi-bin \
+    # for kenlm
+    zlib1g-dev libbz2-dev liblzma-dev \
+    # libsndfile
+    libsndfile-dev \
+    # jq
+    jq \
+    # sox
+    sox libsox-dev \
+    # nccl: for flashlight
+    libnccl2 libnccl-dev \
+    # python
+    python 2.7 \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-distutils \
+    python${PYTHON_VERSION}-dev \
+    python${PYTHON_VERSION}-venv \
+    python3-wheel \
+    python3-pip && \
+    update-alternatives --install /usr/bin/python${PYTHON_VERSION%%.*} python${PYTHON_VERSION%%.*} /usr/bin/python${PYTHON_VERSION} 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1
+
+# Create a virtual environment
+ENV VIRTUAL_ENV=/opt/venv
+RUN python -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+RUN python -m pip install --no-cache-dir --upgrade pip wheel
+
+# install pytorch
+RUN pip install torch==1.12.0+cu116 torchvision==0.13.0+cu116 torchaudio==0.12.0 --extra-index-url https://download.pytorch.org/whl/cu116
+
+# install NVIDIA apex
+RUN pip install packaging
+RUN pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" git+https://github.com/NVIDIA/apex \
+    && python -c "from apex import amp"
+# clone T5 repository
+RUN git clone https://github.com/microsoft/SpeechT5.git
+RUN cd SpeechT5 && \
+    git submodule update --init SpeechT5/fairseq
+RUN cd SpeechT5/SpeechT5 && \ 
+    pip install git+https://github.com/facebookresearch/fairseq.git@7ca8bc1
+    # pip install -e fairseq
+
+RUN pip install espnet
+    
+# install sentencepiece
+RUN apt-get install cmake build-essential pkg-config libgoogle-perftools-dev
+RUN git clone https://github.com/google/sentencepiece.git
+RUN cd sentencepiece && \
+    mkdir build && \
+    cd build && \
+    cmake .. && \
+    make -j $(nproc) && \
+    make install && \
+    ldconfig -v
+# install pydub
+RUN pip install pydub
+# install npy_append_array
+RUN pip install npy_append_array
+# install soundfile
+RUN pip install soundfile
+# install six
+RUN pip install six
+RUN pip install tensorboard
+RUN pip install tensorboardX
+RUN pip install sacrebleu==1.5.1
+RUN pip install sacremoses
+RUN pip install pandas
+# RUN git clone --depth 1 https://github.com/google/sentencepiece.git /tmp/sentencepiece && \
+#       cd /tmp/sentencepiece && \
+#       ./autogen.sh && \
+#       ./configure && \
+#       make && \
+#       # somehow, test fails
+#       # make check && \
+#       make install && \
+#       rm -rf /tmp/sentencepiece
+# ==================================================================
+# clean up everything
+# ------------------------------------------------------------------
+RUN apt-get clean && \
+    apt-get -y autoremove && \
+    rm -rf /root/.cache && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /tmp/*
