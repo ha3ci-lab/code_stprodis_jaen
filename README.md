@@ -194,7 +194,7 @@ If you find our work is useful in your research, please cite the following paper
 @inproceedings{tranlow,
   title={Low-Resource Japanese-English Speech-to-Text Translation Leveraging Speech-Text Unified-model Representation Learning},
   author={Tran, Tu Dinh and Sakti, Sakriani},
-  booktitle={Proceedings of SIGUL 2023 Workshop at INTERSPEECH 2023},
+  booktitle={Proceedings of INTERSPEECH Satellite Workshop of the Special Interest Group on Under-resourced Languages (SIGUL)},
   year={2023}
 }
 ```
